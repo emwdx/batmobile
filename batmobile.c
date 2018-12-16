@@ -44,7 +44,7 @@
 #define DRIFT_OFF 0
 #define DRIFT_ON 1
 
-#define CONTROL_MODE_LIGHT_PERIOD 3000
+#define CONTROL_MODE_LIGHT_PERIOD 13
 
 bool revertToParentMode = false;
 
@@ -112,7 +112,7 @@ int getStickShiftPosition() {
 		SensorValue[shiftRedOut] = 0;
 		SensorValue[shiftBlueOut] = 1;
 		SensorValue[shiftGreenOut] = 1;
-		
+
 		retVal = SHIFT_REVERSE_GEAR;
 	}
 	else if(1550 > shiftStickValue && shiftStickValue > 1450) {
@@ -120,7 +120,7 @@ int getStickShiftPosition() {
 		SensorValue[shiftBlueOut] = 0;
 		SensorValue[shiftGreenOut] = 1;
 		SensorValue[shiftRedOut] = 1;
-		
+
 		retVal = SHIFT_HIGH_GEAR;
   }
   else if(1800 > shiftStickValue && shiftStickValue > 1700) {
@@ -128,17 +128,17 @@ int getStickShiftPosition() {
   	SensorValue[shiftGreenOut] = 0;
   	SensorValue[shiftBlueOut] = 1;
 		SensorValue[shiftRedOut] = 1;
-		
+
 		retVal = SHIFT_LOW_GEAR;
   }
-  
+
   return retVal;
 }
 
 void driveAcceleration(int controlScheme, int stickShiftPosition) {
 	int breakPedalValue = SensorValue[breakPedalPot];
   int gasPedalValue = SensorValue[gasPedalPot];
-  
+
   switch(stickShiftPosition) {
   	case SHIFT_REVERSE_GEAR:
   		break;
@@ -149,7 +149,7 @@ void driveAcceleration(int controlScheme, int stickShiftPosition) {
   	default:
   		break;
   }
-  
+
   switch(controlScheme) {
   	case CONTROL_SCHEME_1:
   		//steering Ch4
@@ -213,7 +213,7 @@ int getControlMode (int currentControlMode)
 	//onboard control - 7U
 	//onboard control - 5U or 5D held
 	int retVal;
-	
+
 	if(vexRT[Btn7L] == 1 || vexRT[Btn7D] == 1) {
 		retVal = PARENT_CONTROL;
 		revertToParentMode = false;
@@ -242,28 +242,28 @@ int getControlMode (int currentControlMode)
 int getBoostMode() {
 	//boost - 6U
 	int retVal;
-	
+
 	if(vexRT[Btn6U] == 1) {
 		retVal = BOOST_ON;
 	}
 	else {
 		retVal = BOOST_OFF;
 	}
-	
+
 	return retVal;
 }
 
 int getDriftMode() {
 	//drift - 6D
 	int retVal;
-	
+
 	if(vexRT[Btn6D] == 1) {
 		retVal = DRIFT_ON;
 	}
 	else {
 		retVal = DRIFT_OFF;
 	}
-	
+
 	return retVal;
 }
 
@@ -292,7 +292,7 @@ task main ()
 	int boostMode;
 	int driftMode;
 	int loopCount = 0;
-	
+
   while(1 == 1)
   {
   	controlMode = getControlMode(controlMode);
@@ -301,17 +301,20 @@ task main ()
   	//stickShiftPosition = getStickShiftPosition();
   	//boostMode = getBoostMode();
   	//driftMode = getDriftMode();
-  	
+
   	//driveAcceleration();
     //driveLinearActuator();
     //driveMotors();
 
   int steeringPotValue = SensorValue[steeringPot];
-  
+
   	if((loopCount % (CONTROL_MODE_LIGHT_PERIOD * 100)) == 0) {
   		loopCount = 0;
   	}
   	loopCount++;
+
+  	//sleep for 30ms to approximate a periodic tick-through
+  	wait1Msec(30);
   }
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
