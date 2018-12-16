@@ -10,6 +10,9 @@
 #pragma config(Sensor, dgtl5,  shiftGreenOut,  sensorDigitalOut)
 #pragma config(Sensor, dgtl6,  shiftRedOut,    sensorDigitalOut)
 #pragma config(Sensor, dgtl7,  shiftBlueOut,   sensorDigitalOut)
+#pragma config(Sensor, dgtl8,  controlModeLightOut, sensorDigitalOut)
+#pragma config(Sensor, dgtl11, controlSchemeBitTwo, sensorDigitalIn)
+#pragma config(Sensor, dgtl12, controlSchemeBitOne, sensorDigitalIn)
 #pragma config(Motor,  port2,           rightFrontMotor, tmotorServoContinuousRotation, openLoop)
 #pragma config(Motor,  port3,           leftFrontMotor, tmotorServoContinuousRotation, openLoop)
 #pragma config(Motor,  port4,           rearMotor,     tmotorServoContinuousRotation, openLoop)
@@ -19,6 +22,31 @@
 #define LINEAR_ACTUATOR_MID 1980
 #define LINEAR_ACTUATOR_MAX_RIGHT 720
 #define LINEAR_ACTUATOR_MAX_LEFT 3239
+#define LINEAR_ACTUATOR_TICKS_PER_ONE_JOYSTICK 10
+#define LINEAR_ACTUATOR_JOYSTICK_THRESHOLD 10
+#define LINEAR_ACTUATOR_POT_THRESHOLD 40
+
+#define SHIFT_REVERSE_GEAR 0
+#define SHIFT_LOW_GEAR 1
+#define SHIFT_HIGH_GEAR 2
+
+#define CONTROL_SCHEME_1 0
+#define CONTROL_SCHEME_2 1
+#define CONTROL_SCHEME_3 2
+#define CONTROL_SCHEME_4 3
+
+#define KID_CONTROL 0
+#define PARENT_CONTROL 1
+
+#define BOOST_OFF 0
+#define BOOST_ON 1
+
+#define DRIFT_OFF 0
+#define DRIFT_ON 1
+
+#define CONTROL_MODE_LIGHT_PERIOD 3000
+
+bool revertToParentMode = false;
 
 /*----------------------------------------------------------------------------------------------------*\
 |*                            - Single Joystick Control with Thresholds -                             *|
@@ -40,103 +68,250 @@
 |*    Motor - Port 3          leftMotor            VEX Motor           Left motor                     *|
 \*----------------------------------------------------------------------------------------------------*/
 
-//+++++++++++++++++++++++++++++++++++++++++++++| MAIN |+++++++++++++++++++++++++++++++++++++++++++++++
-task main ()
-{
-  int threshold = 10;   // helps to eliminate 'noise' from a joystick that isn't perfectly at (0,0)
+void driveLinearActuator() {
+	int linearActuatorPotValue = SensorValue[linearActuatorPot];
+	int linearActuatorSetpointFromCenter = abs(vexRT[Ch4]) * LINEAR_ACTUATOR_TICKS_PER_ONE_JOYSTICK;
+	int linearActuatorSetpoint;
+
+	if(vexRT[Ch4] > LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
+		linearActuatorSetpoint = LINEAR_ACTUATOR_MID - linearActuatorSetpointFromCenter;
+		if(linearActuatorSetpoint < LINEAR_ACTUATOR_MAX_RIGHT) {
+			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_RIGHT;
+		}
+	}
+	else if(vexRT[Ch4] < -LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
+		linearActuatorSetpoint = LINEAR_ACTUATOR_MID + linearActuatorSetpointFromCenter;
+		if(linearActuatorSetpoint > LINEAR_ACTUATOR_MAX_LEFT) {
+			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_LEFT;
+		}
+	}
+	else {
+		linearActuatorSetpoint = LINEAR_ACTUATOR_MID;
+	}
+
+	if(linearActuatorPotValue - linearActuatorSetpoint > LINEAR_ACTUATOR_POT_THRESHOLD) {
+		motor[turnLinearActuator] = 127; //75
+	}
+	else if(linearActuatorPotValue - linearActuatorSetpoint < -LINEAR_ACTUATOR_POT_THRESHOLD) {
+		motor[turnLinearActuator] = -127; //-75
+	}
+	else {
+		motor[turnLinearActuator] = 0;
+	}
+}
+
+int getStickShiftPosition() {
+	// Shifter
+	int shiftStickValue = SensorValue[shiftStickPosition];
+	int retVal = SHIFT_LOW_GEAR;
+
+	// LED values on the digital outs are reversed for the shifter, 0 turns a color on,
+	// 1 turns it off.
+	if(800 > shiftStickValue && shiftStickValue > 700) {
+		// shifter in reverse
+		SensorValue[shiftRedOut] = 0;
+		SensorValue[shiftBlueOut] = 1;
+		SensorValue[shiftGreenOut] = 1;
+		
+		retVal = SHIFT_REVERSE_GEAR;
+	}
+	else if(1550 > shiftStickValue && shiftStickValue > 1450) {
+		// shifter in high
+		SensorValue[shiftBlueOut] = 0;
+		SensorValue[shiftGreenOut] = 1;
+		SensorValue[shiftRedOut] = 1;
+		
+		retVal = SHIFT_HIGH_GEAR;
+  }
+  else if(1800 > shiftStickValue && shiftStickValue > 1700) {
+  	// shifter in low
+  	SensorValue[shiftGreenOut] = 0;
+  	SensorValue[shiftBlueOut] = 1;
+		SensorValue[shiftRedOut] = 1;
+		
+		retVal = SHIFT_LOW_GEAR;
+  }
+  
+  return retVal;
+}
+
+void driveAcceleration(int controlScheme, int stickShiftPosition) {
+	int breakPedalValue = SensorValue[breakPedalPot];
+  int gasPedalValue = SensorValue[gasPedalPot];
+  
+  switch(stickShiftPosition) {
+  	case SHIFT_REVERSE_GEAR:
+  		break;
+  	case SHIFT_LOW_GEAR:
+  		break;
+  	case SHIFT_HIGH_GEAR:
+  		break;
+  	default:
+  		break;
+  }
+  
+  switch(controlScheme) {
+  	case CONTROL_SCHEME_1:
+  		//steering Ch4
+			//throttle 8R
+			//brake 8D
+  		break;
+  	case CONTROL_SCHEME_2:
+  		//steering Ch1
+			//throttle Ch3
+  		break;
+  	case CONTROL_SCHEME_3:
+  		//steering Ch4
+			//throttle Ch3
+  		break;
+  	case CONTROL_SCHEME_4:
+  		//steering Ch4
+			//throttle Ch1
+  		break;
+  	default:
+  		break;
+  }
+}
+
+void driveMotors() {
+	int threshold = 10;   // helps to eliminate 'noise' from a joystick that isn't perfectly at (0,0)
                         // feel free to change this to match your needs.
 
   int testVar = 0;
   int testVar2 = 0;
 
+	if(abs(vexRT[Ch3]) > threshold)         // If the left joystick is greater than or less than the threshold:
+  {
+    motor[leftFrontMotor]  = (vexRT[Ch3])/2;   // Left Joystick Y value / 2.
+    testVar = 100;
+  }
+  else                                    // If the left joystick is within the threshold:
+  {
+    motor[leftFrontMotor]  = 0;                // Stop the left motor (cancel noise)
+    testVar = 0;
+  }
+
+  if(abs(vexRT[Ch2]) > threshold)         // If the right joystick is greater than or less than the threshold:
+  {
+    motor[rightFrontMotor] = (vexRT[Ch2])/2;   // Right Joystick Y value / 2.
+    testVar2 = 100;
+  }
+  else                                    // If the right joystick is within the threshold:
+  {
+    motor[rightFrontMotor] = 0;                // Stop the right motor (cancel noise)
+    testVar2 = 0;
+  }
+}
+
+int getConfiguredControlScheme(){
+	return 3 - (SensorValue[controlSchemeBitOne] * 1 + SensorValue[controlSchemeBitTwo] * 2);
+}
+
+int getControlMode (int currentControlMode)
+{
+	//remote control - 7L or 7D
+	//onboard control - 7U
+	//onboard control - 5U or 5D held
+	int retVal;
+	
+	if(vexRT[Btn7L] == 1 || vexRT[Btn7D] == 1) {
+		retVal = PARENT_CONTROL;
+		revertToParentMode = false;
+	}
+	else if(vexRT[Btn7U] == 1) {
+		retVal = KID_CONTROL;
+		revertToParentMode = false;
+	}
+	else if(vexRT[Btn5U] == 1 || vexRT[Btn5D] == 1) {
+		retVal = KID_CONTROL;
+		//revert to PARENT_CONTROL regardless of what state we were in when we started
+		//holding the momentary.
+		revertToParentMode = true;
+	}
+	else if(revertToParentMode == true) {
+		retVal = PARENT_CONTROL;
+		revertToParentMode = false;
+	}
+	else {
+		retVal = currentControlMode;
+	}
+
+	return retVal;
+}
+
+int getBoostMode() {
+	//boost - 6U
+	int retVal;
+	
+	if(vexRT[Btn6U] == 1) {
+		retVal = BOOST_ON;
+	}
+	else {
+		retVal = BOOST_OFF;
+	}
+	
+	return retVal;
+}
+
+int getDriftMode() {
+	//drift - 6D
+	int retVal;
+	
+	if(vexRT[Btn6D] == 1) {
+		retVal = DRIFT_ON;
+	}
+	else {
+		retVal = DRIFT_OFF;
+	}
+	
+	return retVal;
+}
+
+void setControlModeLight(int controlMode, int loopCount) {
+	switch(controlMode) {
+		case KID_CONTROL:
+			if((loopCount % CONTROL_MODE_LIGHT_PERIOD) == 0) {
+				SensorValue[controlModeLightOut] = SensorValue[controlModeLightOut] ^ 1;
+			}
+			break;
+		case PARENT_CONTROL:
+			SensorValue[controlModeLightOut] = 0;
+			break;
+		default:
+			SensorValue[controlModeLightOut] = 1;
+			break;
+	}
+}
+
+//+++++++++++++++++++++++++++++++++++++++++++++| MAIN |+++++++++++++++++++++++++++++++++++++++++++++++
+task main ()
+{
+	int controlScheme;
+	int stickShiftPosition;
+	int controlMode = PARENT_CONTROL;
+	int boostMode;
+	int driftMode;
+	int loopCount = 0;
+	
   while(1 == 1)
   {
-  	//int breakPedalValue = SensorValue[breakPedalPot];
-  	//int gasPedalValue = SensorValue[gasPedalPot];
+  	controlMode = getControlMode(controlMode);
+  	setControlModeLight(controlMode, loopCount);
+  	//controlScheme = getConfiguredControlScheme();
+  	//stickShiftPosition = getStickShiftPosition();
+  	//boostMode = getBoostMode();
+  	//driftMode = getDriftMode();
+  	
+  	//driveAcceleration();
+    //driveLinearActuator();
+    //driveMotors();
 
-  /*
-  	// Shifter
-  	int shiftStickValue = SensorValue[shiftStickPosition];
-
-  	// LED values on the digital outs are reversed for the shifter, 0 turns a color on,
-  	// 1 turns it off.
-  	if(800 > shiftStickValue && shiftStickValue > 700) {
-  		// shifter in reverse
-  		SensorValue[shiftRedOut] = 0;
-  		SensorValue[shiftBlueOut] = 1;
-  		SensorValue[shiftGreenOut] = 1;
+  int steeringPotValue = SensorValue[steeringPot];
+  
+  	if((loopCount % (CONTROL_MODE_LIGHT_PERIOD * 100)) == 0) {
+  		loopCount = 0;
   	}
-  	else if(1550 > shiftStickValue && shiftStickValue > 1450) {
-  		// shifter in high
-  		SensorValue[shiftBlueOut] = 0;
-  		SensorValue[shiftGreenOut] = 1;
-  		SensorValue[shiftRedOut] = 1;
-    }
-    else if(1800 > shiftStickValue && shiftStickValue > 1700) {
-    	// shifter in low
-    	SensorValue[shiftGreenOut] = 0;
-    	SensorValue[shiftBlueOut] = 1;
-  		SensorValue[shiftRedOut] = 1;
-    }
-    */
-
-    int linearActuatorPotValue = SensorValue[linearActuatorPot];
-    int linearActuatorTicksPerOneJoystick = 10;
-    int linearActuatorJoystickThreshold = 10;
-
-  	int linearActuatorSetpointFromCenter = abs(vexRT[Ch4]) * linearActuatorTicksPerOneJoystick;
-  	int linearActuatorSetpoint;
-  	if(vexRT[Ch4] > linearActuatorJoystickThreshold) {
-  		linearActuatorSetpoint = LINEAR_ACTUATOR_MID - linearActuatorSetpointFromCenter;
-  		if(linearActuatorSetpoint < LINEAR_ACTUATOR_MAX_RIGHT) {
-  			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_RIGHT;
-  		}
-  	}
-  	else if(vexRT[Ch4] < -linearActuatorJoystickThreshold) {
-  		linearActuatorSetpoint = LINEAR_ACTUATOR_MID + linearActuatorSetpointFromCenter;
-  		if(linearActuatorSetpoint > LINEAR_ACTUATOR_MAX_LEFT) {
-  			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_LEFT;
-  		}
-  	}
-  	else {
-  		linearActuatorSetpoint = LINEAR_ACTUATOR_MID;
-  	}
-
-  	int linearActuatorPotThreshold = 40; //20
-  	//9.97 ticks per 1 joystick value
-  	if(linearActuatorPotValue - linearActuatorSetpoint > linearActuatorPotThreshold) {
-  		motor[turnLinearActuator] = 127; //75
-  	}
-  	else if(linearActuatorPotValue - linearActuatorSetpoint < -linearActuatorPotThreshold) {
-  		motor[turnLinearActuator] = -127; //-75
-  	}
-  	else {
-  		motor[turnLinearActuator] = 0;
-  	}
-
-
-
-    if(abs(vexRT[Ch3]) > threshold)         // If the left joystick is greater than or less than the threshold:
-    {
-      motor[leftFrontMotor]  = (vexRT[Ch3])/2;   // Left Joystick Y value / 2.
-      testVar = 100;
-    }
-    else                                    // If the left joystick is within the threshold:
-    {
-      motor[leftFrontMotor]  = 0;                // Stop the left motor (cancel noise)
-      testVar = 0;
-    }
-
-    if(abs(vexRT[Ch2]) > threshold)         // If the right joystick is greater than or less than the threshold:
-    {
-      motor[rightFrontMotor] = (vexRT[Ch2])/2;   // Right Joystick Y value / 2.
-      testVar2 = 100;
-    }
-    else                                    // If the right joystick is within the threshold:
-    {
-      motor[rightFrontMotor] = 0;                // Stop the right motor (cancel noise)
-      testVar2 = 0;
-    }
+  	loopCount++;
   }
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
