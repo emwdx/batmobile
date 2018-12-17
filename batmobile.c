@@ -1,5 +1,5 @@
 #pragma config(Sensor, in1,    steeringPot,    sensorPotentiometer)
-#pragma config(Sensor, in2,    breakPedalPot,  sensorPotentiometer)
+#pragma config(Sensor, in2,    brakePedalPot,  sensorPotentiometer)
 #pragma config(Sensor, in3,    gasPedalPot,    sensorPotentiometer)
 #pragma config(Sensor, in4,    linearActuatorPot, sensorPotentiometer)
 #pragma config(Sensor, in5,    shiftStickPosition, sensorAnalog)
@@ -11,6 +11,8 @@
 #pragma config(Sensor, dgtl6,  shiftRedOut,    sensorDigitalOut)
 #pragma config(Sensor, dgtl7,  shiftBlueOut,   sensorDigitalOut)
 #pragma config(Sensor, dgtl8,  controlModeLightOut, sensorDigitalOut)
+#pragma config(Sensor, dgtl9,  auxiliaryLightingOne, sensorDigitalOut)
+#pragma config(Sensor, dgtl10, auxiliaryLightingTwo, sensorDigitalOut)
 #pragma config(Sensor, dgtl11, controlSchemeBitTwo, sensorDigitalIn)
 #pragma config(Sensor, dgtl12, controlSchemeBitOne, sensorDigitalIn)
 #pragma config(Motor,  port2,           rightFrontMotor, tmotorServoContinuousRotation, openLoop)
@@ -44,6 +46,17 @@
 #define DRIFT_OFF 0
 #define DRIFT_ON 1
 
+#define REVERSE_GEAR_MAX_SPEED -64
+#define LOW_GEAR_MAX_SPEED 64
+#define HIGH_GEAR_MAX_SPEED 108
+
+#define BOOST_REVERSE_GEAR_MAX_SPEED -64
+#define BOOST_LOW_GEAR_MAX_SPEED 74
+#define BOOST_HIGH_GEAR_MAX_SPEED 127
+
+#define DRIFT_REAR_WHEEL_SPEED 64
+#define THROTTLE_SCALE_FACTOR 3
+
 #define CONTROL_MODE_LIGHT_PERIOD 13
 
 bool revertToParentMode = false;
@@ -68,18 +81,29 @@ bool revertToParentMode = false;
 |*    Motor - Port 3          leftMotor            VEX Motor           Left motor                     *|
 \*----------------------------------------------------------------------------------------------------*/
 
-void driveLinearActuator() {
+int clipMotorOutput(int output, int max) {
+	if(output > 0 && output > max) {
+		output = max;
+	}
+	else if(output < 0 && output < max) {
+		output = max;
+	}
+
+	return output;
+}
+
+void driveLinearActuator(int steer) {
 	int linearActuatorPotValue = SensorValue[linearActuatorPot];
-	int linearActuatorSetpointFromCenter = abs(vexRT[Ch4]) * LINEAR_ACTUATOR_TICKS_PER_ONE_JOYSTICK;
+	int linearActuatorSetpointFromCenter = abs(steer) * LINEAR_ACTUATOR_TICKS_PER_ONE_JOYSTICK;
 	int linearActuatorSetpoint;
 
-	if(vexRT[Ch4] > LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
+	if(steer > LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
 		linearActuatorSetpoint = LINEAR_ACTUATOR_MID - linearActuatorSetpointFromCenter;
 		if(linearActuatorSetpoint < LINEAR_ACTUATOR_MAX_RIGHT) {
 			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_RIGHT;
 		}
 	}
-	else if(vexRT[Ch4] < -LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
+	else if(steer < -LINEAR_ACTUATOR_JOYSTICK_THRESHOLD) {
 		linearActuatorSetpoint = LINEAR_ACTUATOR_MID + linearActuatorSetpointFromCenter;
 		if(linearActuatorSetpoint > LINEAR_ACTUATOR_MAX_LEFT) {
 			linearActuatorSetpoint = LINEAR_ACTUATOR_MAX_LEFT;
@@ -135,72 +159,185 @@ int getStickShiftPosition() {
   return retVal;
 }
 
-void driveAcceleration(int controlScheme, int stickShiftPosition) {
-	int breakPedalValue = SensorValue[breakPedalPot];
-  int gasPedalValue = SensorValue[gasPedalPot];
+int getSteeringWheelPosition() {
+	int retVal;
 
-  switch(stickShiftPosition) {
-  	case SHIFT_REVERSE_GEAR:
-  		break;
-  	case SHIFT_LOW_GEAR:
-  		break;
-  	case SHIFT_HIGH_GEAR:
-  		break;
-  	default:
-  		break;
-  }
+	float steeringPotValue = SensorValue[steeringPot];
+	float centeredValue = steeringPotValue - 1990;
 
-  switch(controlScheme) {
-  	case CONTROL_SCHEME_1:
-  		//steering Ch4
-			//throttle 8R
-			//brake 8D
-  		break;
-  	case CONTROL_SCHEME_2:
-  		//steering Ch1
-			//throttle Ch3
-  		break;
-  	case CONTROL_SCHEME_3:
-  		//steering Ch4
-			//throttle Ch3
-  		break;
-  	case CONTROL_SCHEME_4:
-  		//steering Ch4
-			//throttle Ch1
-  		break;
-  	default:
-  		break;
-  }
+	if(fabs(centeredValue) < 100) {
+		retVal = 0;
+	}
+	else {
+		retVal = centeredValue / 4.72;
+	}
+
+	return round(retVal);
 }
 
-void driveMotors() {
+void driveMotors(int speed, int boostMode, int driftMode, int stickShiftPosition) {
 	int threshold = 10;   // helps to eliminate 'noise' from a joystick that isn't perfectly at (0,0)
                         // feel free to change this to match your needs.
 
-  int testVar = 0;
-  int testVar2 = 0;
+	switch(boostMode) {
+		case BOOST_OFF:
+			switch(stickShiftPosition) {
+				case SHIFT_LOW_GEAR:
+					speed = clipMotorOutput(speed, LOW_GEAR_MAX_SPEED);
+					break;
+				case SHIFT_HIGH_GEAR:
+					speed = clipMotorOutput(speed, HIGH_GEAR_MAX_SPEED);
+					break;
+				case SHIFT_REVERSE_GEAR:
+					speed = clipMotorOutput(speed, REVERSE_GEAR_MAX_SPEED);
+			}
+			break;
+		case BOOST_ON:
+			switch(stickShiftPosition) {
+					case SHIFT_LOW_GEAR:
+						speed = clipMotorOutput(speed, BOOST_LOW_GEAR_MAX_SPEED);
+						break;
+					case SHIFT_HIGH_GEAR:
+						speed = clipMotorOutput(speed, BOOST_HIGH_GEAR_MAX_SPEED);
+						break;
+					case SHIFT_REVERSE_GEAR:
+						speed = clipMotorOutput(speed, BOOST_REVERSE_GEAR_MAX_SPEED);
+				}
+			break;
+	}
 
-	if(abs(vexRT[Ch3]) > threshold)         // If the left joystick is greater than or less than the threshold:
-  {
-    motor[leftFrontMotor]  = (vexRT[Ch3])/2;   // Left Joystick Y value / 2.
-    testVar = 100;
-  }
-  else                                    // If the left joystick is within the threshold:
-  {
-    motor[leftFrontMotor]  = 0;                // Stop the left motor (cancel noise)
-    testVar = 0;
-  }
+  if(abs(speed) > threshold) {
+  	int currentSpeed = motor[leftFrontMotor]; //all motors should be at the same speed unless we're drifting
+  	if(speed < 0) {
+  		speed = clipMotorOutput(speed, currentSpeed - THROTTLE_SCALE_FACTOR);
+  	}
+  	else if(speed > 0) {
+  		speed = clipMotorOutput(speed, currentSpeed + THROTTLE_SCALE_FACTOR);
+  	}
 
-  if(abs(vexRT[Ch2]) > threshold)         // If the right joystick is greater than or less than the threshold:
-  {
-    motor[rightFrontMotor] = (vexRT[Ch2])/2;   // Right Joystick Y value / 2.
-    testVar2 = 100;
+  	motor[leftFrontMotor] = speed;
+  	motor[rightFrontMotor] = speed;
+
+  	int rearSpeed = speed;
+  	switch(driftMode) {
+			case DRIFT_OFF:
+				break;
+			case DRIFT_ON:
+				rearSpeed = clipMotorOutput(rearSpeed, DRIFT_REAR_WHEEL_SPEED);
+				break;
+		}
+		motor[rearMotor] = rearSpeed;
   }
-  else                                    // If the right joystick is within the threshold:
-  {
-    motor[rightFrontMotor] = 0;                // Stop the right motor (cancel noise)
-    testVar2 = 0;
+  else {
+ 		motor[leftFrontMotor] = 0;
+ 		motor[rightFrontMotor] = 0;
+ 		motor[rearMotor] = 0;
   }
+}
+
+void driveControlSchemeOne(int boostMode, int driftMode) {
+	//steering Ch4
+	//throttle 8R
+	//brake 8D
+	int steer = vexRT[Ch4];
+	int speed = 0;
+	if(vexRT[Btn8R] == 1) {
+		speed = 127;
+	}
+	else if(vexRT[Btn8D] == 1) {
+		speed = -127;
+	}
+	else {
+		speed = 0;
+	}
+
+	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveLinearActuator(steer);
+}
+
+void driveControlSchemeTwo(int boostMode, int driftMode) {
+	//steering Ch1
+	//throttle Ch3
+	int steer = vexRT[Ch1];
+	int speed = vexRT[Ch3];
+
+	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveLinearActuator(steer);
+}
+
+void driveControlSchemeThree(int boostMode, int driftMode) {
+	//steering Ch4
+	//throttle Ch3
+	int steer = vexRT[Ch4];
+	int speed = vexRT[Ch3];
+
+	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveLinearActuator(steer);
+}
+
+void driveControlSchemeFour(int boostMode, int driftMode) {
+	//steering Ch4
+	//throttle Ch1
+	int steer = vexRT[Ch4];
+	int speed = vexRT[Ch1];
+
+	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveLinearActuator(steer);
+}
+
+void driveControlSchemeKid(int stickShiftPosition, int boostMode, int driftMode) {
+	float brakePedalValue = SensorValue[brakePedalPot];
+  float gasPedalValue = SensorValue[gasPedalPot];
+  int steer = getSteeringWheelPosition();
+  int speed = 0;
+  float potScalingFactor = 21.66;
+
+  if(brakePedalValue > 800) {
+  	// brake is pressed
+  	speed = 127 - round((brakePedalValue - 800) / potScalingFactor);
+	}
+	else if(gasPedalValue > 800) {
+		// gas is pressed
+		speed = round((gasPedalValue - 800) / potScalingFactor);
+		if(stickShiftPosition == SHIFT_REVERSE_GEAR) {
+			speed = -speed;
+		}
+	}
+	else {
+		// neither is pressed
+		speed = 0;
+	}
+
+  driveMotors(speed, boostMode, driftMode, stickShiftPosition);
+  driveLinearActuator(steer);
+}
+
+void move(int controlMode, int controlScheme
+											, int stickShiftPosition, int boostMode
+											, int driftMode) {
+  switch(controlMode) {
+  	case PARENT_CONTROL:
+		  switch(controlScheme) {
+		  	case CONTROL_SCHEME_1:
+		  		driveControlSchemeOne(boostMode, driftMode);
+		  		break;
+		  	case CONTROL_SCHEME_2:
+		  		driveControlSchemeTwo(boostMode, driftMode);
+		  		break;
+		  	case CONTROL_SCHEME_3:
+		  		driveControlSchemeThree(boostMode, driftMode);
+		  		break;
+		  	case CONTROL_SCHEME_4:
+		  		driveControlSchemeFour(boostMode, driftMode);
+		  		break;
+		  	default:
+		  		break;
+		  }
+		  break;
+		 case KID_CONTROL:
+		 	driveControlSchemeKid(stickShiftPosition, boostMode, driftMode);
+		 	break;
+	}
 }
 
 int getConfiguredControlScheme(){
@@ -297,16 +434,13 @@ task main ()
   {
   	controlMode = getControlMode(controlMode);
   	setControlModeLight(controlMode, loopCount);
-  	//controlScheme = getConfiguredControlScheme();
-  	//stickShiftPosition = getStickShiftPosition();
-  	//boostMode = getBoostMode();
-  	//driftMode = getDriftMode();
 
-  	//driveAcceleration();
-    //driveLinearActuator();
-    //driveMotors();
+  	controlScheme = getConfiguredControlScheme();
+  	stickShiftPosition = getStickShiftPosition();
+  	boostMode = getBoostMode();
+  	driftMode = getDriftMode();
 
-  int steeringPotValue = SensorValue[steeringPot];
+  	move(controlMode, controlScheme, stickShiftPosition, boostMode, driftMode);
 
   	if((loopCount % (CONTROL_MODE_LIGHT_PERIOD * 100)) == 0) {
   		loopCount = 0;
