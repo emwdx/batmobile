@@ -31,6 +31,7 @@
 #define SHIFT_REVERSE_GEAR 0
 #define SHIFT_LOW_GEAR 1
 #define SHIFT_HIGH_GEAR 2
+#define SHIFT_REVERSE_HIGH_GEAR 3
 
 #define CONTROL_SCHEME_1 0
 #define CONTROL_SCHEME_2 1
@@ -49,17 +50,22 @@
 #define REVERSE_GEAR_MAX_SPEED -64
 #define LOW_GEAR_MAX_SPEED 64
 #define HIGH_GEAR_MAX_SPEED 108
+#define REVERSE_HIGH_GEAR_MAX_SPEED -108
 
 #define BOOST_REVERSE_GEAR_MAX_SPEED -64
 #define BOOST_LOW_GEAR_MAX_SPEED 74
 #define BOOST_HIGH_GEAR_MAX_SPEED 127
+#define BOOST_REVERSE_HIGH_GEAR_MAX_SPEED -127
 
-#define DRIFT_REAR_WHEEL_SPEED 64
+#define DRIFT_REAR_WHEEL_SPEED 0
+
 #define THROTTLE_SCALE_FACTOR 3
 
 #define CONTROL_MODE_LIGHT_PERIOD 13
 
 bool revertToParentMode = false;
+bool btn8LLastPressed = false;
+bool btn8ULastPressed = false;
 
 /*----------------------------------------------------------------------------------------------------*\
 |*                            - Single Joystick Control with Thresholds -                             *|
@@ -88,8 +94,22 @@ int clipMotorOutput(int output, int max) {
 	else if(output < 0 && output < max) {
 		output = max;
 	}
+	//else if(output == 0) {
+	//	output = max;
+	//}
 
 	return output;
+}
+
+int rampDown(int currentSpeed) {
+	if(currentSpeed > 0) {
+		currentSpeed -= THROTTLE_SCALE_FACTOR;
+	}
+	else if(currentSpeed < 0) {
+		currentSpeed += THROTTLE_SCALE_FACTOR;
+	}
+
+	return currentSpeed;
 }
 
 void driveLinearActuator(int steer) {
@@ -190,6 +210,10 @@ void driveMotors(int speed, int boostMode, int driftMode, int stickShiftPosition
 					break;
 				case SHIFT_REVERSE_GEAR:
 					speed = clipMotorOutput(speed, REVERSE_GEAR_MAX_SPEED);
+					break;
+				case SHIFT_REVERSE_HIGH_GEAR:
+					speed = clipMotorOutput(speed, REVERSE_HIGH_GEAR_MAX_SPEED);
+					break;
 			}
 			break;
 		case BOOST_ON:
@@ -202,14 +226,17 @@ void driveMotors(int speed, int boostMode, int driftMode, int stickShiftPosition
 						break;
 					case SHIFT_REVERSE_GEAR:
 						speed = clipMotorOutput(speed, BOOST_REVERSE_GEAR_MAX_SPEED);
+					case SHIFT_REVERSE_HIGH_GEAR:
+						speed = clipMotorOutput(speed, BOOST_REVERSE_HIGH_GEAR_MAX_SPEED);
 				}
 			break;
 	}
 
+	int currentSpeed = motor[leftFrontMotor]; //all motors should be at the same speed unless we're drifting
+
   if(abs(speed) > threshold) {
-  	int currentSpeed = motor[leftFrontMotor]; //all motors should be at the same speed unless we're drifting
   	if(speed < 0) {
-  		speed = clipMotorOutput(speed, currentSpeed - THROTTLE_SCALE_FACTOR);
+  			speed = clipMotorOutput(speed, currentSpeed - THROTTLE_SCALE_FACTOR);
   	}
   	else if(speed > 0) {
   		speed = clipMotorOutput(speed, currentSpeed + THROTTLE_SCALE_FACTOR);
@@ -229,9 +256,15 @@ void driveMotors(int speed, int boostMode, int driftMode, int stickShiftPosition
 		motor[rearMotor] = rearSpeed;
   }
   else {
- 		motor[leftFrontMotor] = 0;
- 		motor[rightFrontMotor] = 0;
- 		motor[rearMotor] = 0;
+  	speed = rampDown(currentSpeed);
+
+  	if(abs(speed) < threshold) {
+  		speed = 0;
+  	}
+
+ 		motor[leftFrontMotor] = speed;
+ 		motor[rightFrontMotor] = speed;
+ 		motor[rearMotor] = speed;
   }
 }
 
@@ -251,7 +284,7 @@ void driveControlSchemeOne(int boostMode, int driftMode) {
 		speed = 0;
 	}
 
-	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveMotors(speed, boostMode, driftMode, speed >= 0 ? SHIFT_HIGH_GEAR : SHIFT_REVERSE_HIGH_GEAR);
 	driveLinearActuator(steer);
 }
 
@@ -261,7 +294,7 @@ void driveControlSchemeTwo(int boostMode, int driftMode) {
 	int steer = vexRT[Ch1];
 	int speed = vexRT[Ch3];
 
-	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveMotors(speed, boostMode, driftMode, speed >= 0 ? SHIFT_HIGH_GEAR : SHIFT_REVERSE_HIGH_GEAR);
 	driveLinearActuator(steer);
 }
 
@@ -271,17 +304,17 @@ void driveControlSchemeThree(int boostMode, int driftMode) {
 	int steer = vexRT[Ch4];
 	int speed = vexRT[Ch3];
 
-	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveMotors(speed, boostMode, driftMode, speed >= 0 ? SHIFT_HIGH_GEAR : SHIFT_REVERSE_HIGH_GEAR);
 	driveLinearActuator(steer);
 }
 
 void driveControlSchemeFour(int boostMode, int driftMode) {
 	//steering Ch4
-	//throttle Ch1
+	//throttle Ch2
 	int steer = vexRT[Ch4];
-	int speed = vexRT[Ch1];
+	int speed = vexRT[Ch2];
 
-	driveMotors(speed, boostMode, driftMode, SHIFT_HIGH_GEAR);
+	driveMotors(speed, boostMode, driftMode, speed >= 0 ? SHIFT_HIGH_GEAR : SHIFT_REVERSE_HIGH_GEAR);
 	driveLinearActuator(steer);
 }
 
@@ -421,14 +454,24 @@ void setControlModeLight(int controlMode, int loopCount) {
 }
 
 void setAuxiliaryLightingOne(){
-	if(vexRT[Btn8L] == 1) {
+	if(vexRT[Btn8L] == 1 && !btn8LLastPressed) {
 		SensorValue[auxiliaryLightingOne] ^= 1;
+		btn8LLastPressed = true;
+	}
+	
+	if(vexRT[Btn8L] == 0) {
+		btn8LLastPressed = false;
 	}
 }
 
 void setAuxiliaryLightingTwo(){
-	if(vexRT[Btn8U] == 1) {
+	if(vexRT[Btn8U] == 1 && !btn8ULastPressed) {
 		SensorValue[auxiliaryLightingTwo] ^= 1;
+		btn8ULastPressed = true;
+	}
+	
+	if(vexRT[Btn8U] == 0) {
+		btn8ULastPressed = false;
 	}
 }
 
@@ -441,7 +484,7 @@ task main ()
 	int boostMode;
 	int driftMode;
 	int loopCount = 0;
-	
+
 	//start with auxiliary lighting on
 	SensorValue[auxiliaryLightingOne] = 1;
 	SensorValue[auxiliaryLightingTwo] = 1;
