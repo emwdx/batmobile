@@ -3,6 +3,7 @@
 #pragma config(Sensor, in3,    gasPedalPot,    sensorPotentiometer)
 #pragma config(Sensor, in4,    linearActuatorPot, sensorPotentiometer)
 #pragma config(Sensor, in5,    shiftStickPosition, sensorAnalog)
+#pragma config(Sensor, dgtl4,  carHeadlightIn, sensorDigitalIn)
 #pragma config(Sensor, dgtl5,  shiftGreenOut,  sensorDigitalOut)
 #pragma config(Sensor, dgtl6,  shiftRedOut,    sensorDigitalOut)
 #pragma config(Sensor, dgtl7,  shiftBlueOut,   sensorDigitalOut)
@@ -60,7 +61,10 @@
 #define CONTROL_MODE_LIGHT_PERIOD 13
 
 bool revertToParentMode = false;
+
 bool btn8LLastPressed = false;
+bool carHeadlightInLastPressed = false;
+
 bool btn8ULastPressed = false;
 
 /*----------------------------------------------------------------------------------------------------*\
@@ -450,13 +454,18 @@ void setControlModeLight(int controlMode, int loopCount) {
 }
 
 void setAuxiliaryLightingOne(){
-	if(vexRT[Btn8L] == 1 && !btn8LLastPressed) {
+	if((vexRT[Btn8L] == 1 && !btn8LLastPressed) || (SensorValue[carHeadlightIn] && !carHeadlightInLastPressed)) {
 		SensorValue[auxiliaryLightingOne] ^= 1;
 		btn8LLastPressed = true;
+		carHeadlightInLastPressed = true;
 	}
-	
+
 	if(vexRT[Btn8L] == 0) {
 		btn8LLastPressed = false;
+	}
+
+	if(SensorValue[carHeadlightIn] == 1) {
+		carHeadlightInLastPressed = false;
 	}
 }
 
@@ -465,7 +474,7 @@ void setAuxiliaryLightingTwo(){
 		SensorValue[auxiliaryLightingTwo] ^= 1;
 		btn8ULastPressed = true;
 	}
-	
+
 	if(vexRT[Btn8U] == 0) {
 		btn8ULastPressed = false;
 	}
