@@ -454,7 +454,7 @@ void setControlModeLight(int controlMode, int loopCount) {
 }
 
 void setAuxiliaryLightingOne(){
-	if((vexRT[Btn8L] == 1 && !btn8LLastPressed) || (SensorValue[carHeadlightIn] && !carHeadlightInLastPressed)) {
+	if((vexRT[Btn8L] == 1 && !btn8LLastPressed) || (SensorValue[carHeadlightIn] == 0 && !carHeadlightInLastPressed)) {
 		SensorValue[auxiliaryLightingOne] ^= 1;
 		btn8LLastPressed = true;
 		carHeadlightInLastPressed = true;
