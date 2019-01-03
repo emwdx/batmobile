@@ -327,7 +327,14 @@ void driveControlSchemeKid(int stickShiftPosition, int boostMode, int driftMode)
 
   if(brakePedalValue > 800) {
   	// brake is pressed
-  	speed = 127 - round((brakePedalValue - 800) / potScalingFactor);
+  	int desiredSpeed = round((gasPedalValue - 800) / potScalingFactor);
+  	    if(stickShiftPosition == SHIFT_REVERSE_GEAR) {
+  	        speed = -desiredSpeed + round((brakePedalValue - 800) / potScalingFactor);
+  	        if(speed > 0) speed = 0;
+  	    } else {
+  	        speed = desiredSpeed - round((brakePedalValue - 800) / potScalingFactor);
+  	        if(speed < 0) speed = 0;
+  	    }
 	}
 	else if(gasPedalValue > 800) {
 		// gas is pressed
