@@ -405,6 +405,11 @@ int getConfiguredControlScheme(){
 bool isSystemEnabled(){
 
 //should be true if the pin is set high by hardware
+
+//FLABBERGASTED!
+//return true;
+
+
 return SensorValue[remoteDisableSet];
 
 
